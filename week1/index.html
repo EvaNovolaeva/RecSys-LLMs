@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Random Lunch Menu Generator</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <style>
         * {
             margin: 0;
@@ -93,6 +93,11 @@
             transform: translateY(0);
         }
         
+        .generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
         .footer {
             margin-top: 30px;
             color: #777;
@@ -130,16 +135,18 @@
 </head>
 <body>
     <div class="container">
-        <h1><i class="fas fa-utensils"></i> Random Lunch Generator</h1>
+        <h1><span aria-hidden="true">🍽️</span> Random Lunch Generator</h1>
         <p class="description">Struggling to decide what to eat? Let us choose for you with just one click!</p>
         
         <div class="lunch-display">
-            <div class="food-icon"><i class="fas fa-question"></i></div>
-            <div class="food-name">What's for lunch?</div>
+            <div role="status" aria-live="polite">
+                <div class="food-icon" aria-hidden="true">🤔</div>
+                <div class="food-name">What's for lunch?</div>
+            </div>
         </div>
         
         <button class="generate-btn" id="generateBtn">
-            <i class="fas fa-random"></i> Generate Lunch!
+            <span aria-hidden="true">🎲</span> Generate Lunch!
         </button>
         
         <p class="footer">Click the button again if you can't decide!</p>
@@ -152,24 +159,27 @@
             const foodName = document.querySelector('.food-name');
             const lunchDisplay = document.querySelector('.lunch-display');
             
-            // Array of lunch options with corresponding Font Awesome icons
+            // Array of lunch options with corresponding emoji
             const lunchMenu = [
-                { name: "Pizza", icon: "fas fa-pizza-slice" },
-                { name: "Sushi", icon: "fas fa-fish" },
-                { name: "Burger", icon: "fas fa-hamburger" },
-                { name: "Salad", icon: "fas fa-leaf" },
-                { name: "Tacos", icon: "fas fa-utensil-spoon" },
-                { name: "Ramen", icon: "fas fa-bowl-hot" },
-                { name: "Sandwich", icon: "fas fa-bread-slice" },
-                { name: "Pasta", icon: "fas fa-pasta" },
-                { name: "Curry", icon: "fas fa-mortar-pestle" },
-                { name: "Steak", icon: "fas fa-drumstick-bite" },
-                { name: "Soup", icon: "fas fa-bowl" },
-                { name: "BBQ", icon: "fas fa-fire" }
+                { name: "Pizza", emoji: "🍕" },
+                { name: "Sushi", emoji: "🍣" },
+                { name: "Burger", emoji: "🍔" },
+                { name: "Salad", emoji: "🥗" },
+                { name: "Tacos", emoji: "🌮" },
+                { name: "Ramen", emoji: "🍜" },
+                { name: "Sandwich", emoji: "🥪" },
+                { name: "Pasta", emoji: "🍝" },
+                { name: "Curry", emoji: "🍛" },
+                { name: "Steak", emoji: "🥩" },
+                { name: "Soup", emoji: "🥣" },
+                { name: "BBQ", emoji: "🍖" }
             ];
             
             // Function to generate random lunch
             function generateRandomLunch() {
+                // Disable the button during the delay
+                generateBtn.disabled = true;
+                
                 // Remove fade-in class if it exists
                 lunchDisplay.classList.remove('fade-in');
                 
@@ -178,13 +188,16 @@
                 const selectedLunch = lunchMenu[randomIndex];
                 
                 // Briefly show loading state
-                foodIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                foodIcon.textContent = "⏳";
                 foodName.textContent = "Thinking...";
                 
                 // After a short delay, show the selected lunch
                 setTimeout(() => {
-                    foodIcon.innerHTML = `<i class="${selectedLunch.icon}"></i>`;
-                    foodName.textContent = selectedLunch.name;
+                    foodIcon.textContent = selectedLunch.emoji;
+                    foodName.textContent = `Today's pick: ${selectedLunch.name}! 🥳`;
+                    
+                    // Re-enable the button
+                    generateBtn.disabled = false;
                     
                     // Add animation class
                     lunchDisplay.classList.add('fade-in');
