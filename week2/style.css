@@ -99,3 +99,80 @@ p {
 .success {
     color: #27ae60;
 }
+#result {
+    white-space: pre-line;
+}
+#result,
+#profile-result {
+    white-space: pre-line;
+}
+
+#profile-section {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid #e5e7eb;
+}
+
+#profile-section h2 {
+    margin-bottom: 10px;
+    color: #2d4059;
+}
+
+.profile-help {
+    margin-bottom: 16px;
+    color: #7a858a;
+    line-height: 1.5;
+}
+
+.profile-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.profile-controls select,
+.profile-controls button {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#profile-result-box {
+    margin-top: 18px;
+}
+#result,
+#profile-result {
+    white-space: pre-line;
+}
+
+#profile-section {
+    margin-top: 28px;
+    padding-top: 22px;
+    border-top: 1px solid #e5e7eb;
+}
+
+#profile-section h2 {
+    margin-bottom: 10px;
+    color: #2d4059;
+}
+
+.profile-help {
+    margin-bottom: 16px;
+    color: #7a858a;
+    line-height: 1.5;
+}
+
+.profile-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.profile-controls select,
+.profile-controls button {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#profile-result-box {
+    margin-top: 18px;
+}

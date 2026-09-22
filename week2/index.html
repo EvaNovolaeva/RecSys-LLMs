@@ -18,8 +18,40 @@
             <button id="recommend-btn" onclick="getRecommendations()">Get Recommendations</button>
         </div>
         
-        <div id="result-box">
+               <div id="result-box">
             <p id="result">Please wait, loading data...</p>
+        </div>
+
+        <div id="profile-section">
+            <h2>Profile-Based Recommendations</h2>
+            <p class="profile-help">
+                Select exactly three different movies. The system will average
+                their genre vectors and recommend the Top-5 most similar movies.
+            </p>
+
+            <div class="profile-controls">
+                <select id="profile-select-1">
+                    <option value="" disabled selected>Select profile movie 1</option>
+                </select>
+
+                <select id="profile-select-2">
+                    <option value="" disabled selected>Select profile movie 2</option>
+                </select>
+
+                <select id="profile-select-3">
+                    <option value="" disabled selected>Select profile movie 3</option>
+                </select>
+
+                <button id="profile-recommend-btn" onclick="recommendByProfile()">
+                    Recommend by Profile (Top-5)
+                </button>
+            </div>
+
+            <div id="profile-result-box">
+                <p id="profile-result">
+                    Select three movies to build a preference profile.
+                </p>
+            </div>
         </div>
     </div>
 
