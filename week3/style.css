@@ -14,7 +14,7 @@ body {
 }
 
 .container {
-    max-width: 800px;
+    max-width: 960px;
     margin: 0 auto;
     background: white;
     border-radius: 15px;
@@ -138,6 +138,86 @@ select:focus {
     border-left-color: #e74c3c;
 }
 
+/* Two result panels, one per method, side by side. */
+.results {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.panel {
+    padding: 20px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-top: 4px solid #bdc3c7;
+    border-radius: 8px;
+    text-align: center;
+    min-height: 190px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.panel h2 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+
+.panel-pair {
+    font-size: 0.9rem;
+    color: #555;
+    margin-bottom: 8px;
+    word-break: break-word;
+}
+
+.panel-rating {
+    font-size: 2.6rem;
+    font-weight: 600;
+    line-height: 1.1;
+    margin-bottom: 8px;
+}
+
+.panel-rating .out-of {
+    font-size: 1.1rem;
+    font-weight: 400;
+    color: #777;
+}
+
+.panel-note {
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.panel-note.observed {
+    color: #2471a3;
+    font-weight: 500;
+}
+
+.panel.high {
+    background: #e8f6f3;
+    border-top-color: #27ae60;
+}
+
+.panel.medium {
+    background: #fef9e7;
+    border-top-color: #f39c12;
+}
+
+.panel.low {
+    background: #fdedec;
+    border-top-color: #e74c3c;
+}
+
+/* An observed rating is not a prediction, so it is styled to read as data
+   rather than as a computed estimate. */
+.panel.known {
+    background: #eaf2f8;
+    border-top-color: #3498db;
+}
+
 .loading {
     display: inline-block;
     width: 20px;
@@ -174,5 +254,11 @@ select:focus {
     
     .controls {
         gap: 15px;
+    }
+
+    /* Side by side is the required layout, but on a narrow phone one column
+       is the only way both panels stay readable. */
+    .results {
+        grid-template-columns: 1fr;
     }
 }

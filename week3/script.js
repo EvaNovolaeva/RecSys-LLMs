@@ -11,15 +11,22 @@ window.onload = async function() {
         // Load data first
         await loadData();
         
+        // Build the CF lookup tables as soon as the ratings exist. This is
+        // synchronous and needs no model, no CDN and no network, so both CF
+        // methods are usable the moment this returns.
+        initCollaborativeFiltering(ratings);
+        
         // Populate dropdowns
         populateUserDropdown();
         populateMovieDropdown();
         
-        // Update status and start training
-        updateStatus('Data loaded. Training model...');
+        // Enable Predict. Nothing is trained on load any more, so this is the
+        // only gate there is.
+        document.getElementById('predict-btn').disabled = false;
         
-        // Train the model
-        await trainModel();
+        updateStatus(`Ready: ${ratings.length.toLocaleString()} observed ratings indexed `
+            + `across ${numUsers} users and ${numMovies} movies. `
+            + `Pick a user and a movie, then Predict Rating.`);
         
     } catch (error) {
         console.error('Initialization error:', error);
@@ -52,6 +59,14 @@ function populateMovieDropdown() {
         movieSelect.appendChild(option);
     });
 }
+
+// ---------------------------------------------------------------------
+// The Matrix Factorization baseline below is retained from the starter
+// code but is intentionally not used by this page: window.onload no longer
+// calls trainModel(), no control dispatches to predictRating(), and there
+// is no MF option in the UI. It also needs TensorFlow.js, which this page
+// no longer loads. Kept intact for reference, dead as shipped.
+// ---------------------------------------------------------------------
 
 function createModel(numUsers, numMovies, latentDim = 10) {
     // User input
@@ -96,7 +111,9 @@ function createModel(numUsers, numMovies, latentDim = 10) {
 async function trainModel() {
     try {
         isTraining = true;
-        document.getElementById('predict-btn').disabled = true;
+        // The Predict button stays enabled during training: the two CF
+        // methods do not need this model. predictRating() refuses on its
+        // own if the TF.js baseline is selected before training finishes.
         
         // Create model
         model = createModel(numUsers, numMovies, 10);
@@ -144,6 +161,100 @@ async function trainModel() {
         isTraining = false;
     }
 }
+// One click, both methods, same user and same movie. There is no method
+// selector on this page, so nothing here branches on a chosen technique.
+function onPredictClicked() {
+    const userId = parseInt(document.getElementById('user-select').value, 10);
+    const movieId = parseInt(document.getElementById('movie-select').value, 10);
+
+    if (!userId || !movieId) {
+        renderPanel('user-panel', 'User-Based CF', { notice: 'Please select both a user and a movie.' });
+        renderPanel('item-panel', 'Item-Based CF', { notice: 'Please select both a user and a movie.' });
+        return;
+    }
+
+    const userRatings = ratingsByUser(userId);
+    const alreadyRated = userRatings ? userRatings.get(movieId) : undefined;
+    const title = movieLabel(movieId);
+
+    // An observed rating is not a prediction. Presenting a computed number for
+    // a pair we already know would misrepresent the method's accuracy, so both
+    // panels report the observed value instead of estimating it.
+    if (alreadyRated !== undefined) {
+        const known = { userId, movieId, title, observed: alreadyRated };
+        renderPanel('user-panel', 'User-Based CF', known);
+        renderPanel('item-panel', 'Item-Based CF', known);
+        return;
+    }
+
+    // Both predictors run for the same pair, independently, so the two panels
+    // are directly comparable even when one of them has to fall back.
+    renderPanel('user-panel', 'User-Based CF', {
+        userId, movieId, title, result: predictUserBased(userId, movieId), neighborNoun: 'users'
+    });
+    renderPanel('item-panel', 'Item-Based CF', {
+        userId, movieId, title, result: predictItemBased(userId, movieId), neighborNoun: 'movies'
+    });
+}
+
+function movieLabel(movieId) {
+    const movie = movies.find(m => m.id === movieId);
+    if (!movie) return `Movie ${movieId}`;
+    return movie.year ? `${movie.title} (${movie.year})` : movie.title;
+}
+
+function ratingClass(value) {
+    if (value >= 4) return 'high';
+    if (value <= 2) return 'low';
+    return 'medium';
+}
+
+// Fills one method's panel: the rating, plus the evidence behind it. A mean
+// fallback is always labelled as such and carries the reason string from
+// cf.js, so it is never mistaken for a similarity-based estimate.
+function renderPanel(panelId, methodLabel, context) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    if (context.notice) {
+        panel.className = 'panel';
+        panel.innerHTML = `<h2>${methodLabel}</h2>`
+            + `<p class="panel-note">${context.notice}</p>`;
+        return;
+    }
+
+    const heading = `<h2>${methodLabel}</h2>`
+        + `<p class="panel-pair">User ${context.userId} &middot; "${context.title}"</p>`;
+
+    if (context.observed !== undefined) {
+        panel.className = 'panel known';
+        panel.innerHTML = heading
+            + `<p class="panel-rating">${context.observed.toFixed(0)}<span class="out-of">/5</span></p>`
+            + `<p class="panel-note observed">Observed rating &mdash; User ${context.userId} already `
+            + `rated this movie, so no prediction was made. Pick a movie this user has not rated `
+            + `to see the ${methodLabel} estimate.</p>`;
+        return;
+    }
+
+    const result = context.result;
+    if (!result || typeof result.rating !== 'number' || !isFinite(result.rating)) {
+        panel.className = 'panel low';
+        panel.innerHTML = heading
+            + `<p class="panel-note">This method produced no usable rating for that pair.</p>`;
+        return;
+    }
+
+    const evidence = result.fallback
+        ? `<p class="panel-note">Mean fallback &mdash; ${result.fallbackReason}.</p>`
+        : `<p class="panel-note">Based on ${result.neighbors} similar `
+          + `${context.neighborNoun} with positive similarity.</p>`;
+
+    panel.className = `panel ${ratingClass(result.rating)}`;
+    panel.innerHTML = heading
+        + `<p class="panel-rating">${result.rating.toFixed(2)}<span class="out-of">/5</span></p>`
+        + evidence;
+}
+
 
 async function predictRating() {
     if (isTraining) {
@@ -199,8 +310,12 @@ function updateStatus(message, isError = false) {
     statusElement.style.background = isError ? '#fdedec' : '#f8f9fa';
 }
 
+// Reached only from the retained MF code above. This page has no #result
+// element, so the guard keeps a stray call from throwing a TypeError; the
+// live UI is written by renderPanel() instead.
 function updateResult(message, className = '') {
     const resultElement = document.getElementById('result');
+    if (!resultElement) return;
     resultElement.innerHTML = message;
     resultElement.className = `result ${className}`;
 }

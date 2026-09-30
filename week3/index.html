@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Matrix Factorization Movie Recommender</title>
+    <title>Collaborative Filtering Movie Recommender</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Matrix Factorization Movie Recommender</h1>
-            <p>Train a collaborative filtering model in your browser using TensorFlow.js</p>
+            <h1>Collaborative Filtering Movie Recommender</h1>
+            <p>Estimate a rating for any user&ndash;movie pair with user-based and item-based collaborative filtering, side by side</p>
         </header>
-        
+
         <main>
             <div class="controls">
                 <div class="input-group">
@@ -21,25 +21,41 @@
                         <option value="">Loading users...</option>
                     </select>
                 </div>
-                
+
                 <div class="input-group">
                     <label for="movie-select">Select Movie:</label>
                     <select id="movie-select">
                         <option value="">Loading movies...</option>
                     </select>
                 </div>
-                
-                <button id="predict-btn" onclick="predictRating()" disabled>Predict Rating</button>
+
+                <!-- One click fills both panels: there is no method selector,
+                     because the page reports both methods at once. -->
+                <button id="predict-btn" onclick="onPredictClicked()" disabled>Predict Rating</button>
             </div>
-            
-            <div id="status" class="status">Loading data and training model...</div>
-            <div id="result" class="result"></div>
+
+            <div id="status" class="status">Loading MovieLens data...</div>
+
+            <div class="results">
+                <section class="panel" id="user-panel" aria-live="polite">
+                    <h2>User-Based CF</h2>
+                    <p class="panel-note">Waiting for data&hellip;</p>
+                </section>
+                <section class="panel" id="item-panel" aria-live="polite">
+                    <h2>Item-Based CF</h2>
+                    <p class="panel-note">Waiting for data&hellip;</p>
+                </section>
+            </div>
         </main>
     </div>
 
-    <!-- Load TensorFlow.js first, then our data module, then our main script -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <!-- No TensorFlow.js on this page. Both predictors are neighbourhood
+         methods from cf.js that read the lookup tables, so nothing here waits
+         on a model or a CDN. The MF functions still live in script.js but are
+         deliberately left unwired and undisplayed, and the MF option is gone
+         from the UI. -->
     <script src="data.js"></script>
+    <script src="cf.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
