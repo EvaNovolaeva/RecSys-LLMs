@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HW4 — Independent verification</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.5; max-width: 60rem; }
+    h1, h2 { margin-bottom: .4rem; }
+    .note { background: #f5f5f5; border-left: 4px solid #888; padding: .6rem .9rem; margin: 1rem 0; }
+    label { display: inline-block; min-width: 7rem; font-weight: 600; }
+    input[type=text] { font: inherit; padding: .3rem .5rem; width: 22rem; }
+    button { font: inherit; padding: .4rem 1rem; margin-left: .5rem; }
+    table { border-collapse: collapse; margin: .8rem 0; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: .35rem .6rem; text-align: left; }
+    th { background: #eee; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    code { background: #f0f0f0; padding: 0 .25rem; }
+    .ok { color: #0a7a2f; font-weight: 600; }
+    .bad { color: #b00020; font-weight: 600; }
+    .basket { font-family: ui-monospace, monospace; font-size: .85rem; word-break: break-all; }
+    .hit { background: #ffe08a; font-weight: 700; }
+    pre { background: #f6f6f6; padding: .7rem; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>HW4 — Independent verification</h1>
+  <p>
+    This page reads <code>week4/transactions.js</code> directly and scans its
+    dictionary-encoded baskets with its own counting loops. It does
+    <strong>not</strong> load <code>script.js</code> and does not use
+    <code>countItemset</code>, <code>buildIndex</code>, <code>asIndex</code>, the
+    miner, or any of their cached results.
+  </p>
+  <div class="note">
+    <strong>About the data being scanned:</strong> this is the <em>exported</em>
+    dataset in <code>transactions.js</code> (541,909 raw rows cleaned to
+    384,911 rows, grouped by <code>InvoiceNo</code> into 17,080 baskets of
+    dictionary-encoded stock indices). It is not the raw UCI workbook:
+    original <code>InvoiceNo</code> values and <code>InvoiceDate</code>
+    timestamps are <strong>not</strong> present, so nothing here can be keyed
+    to time or to original invoice identifiers.
+  </div>
+
+  <h2>Rule to verify</h2>
+  <p>
+    <label for="a-items">Antecedent A</label>
+    <input type="text" id="a-items" value="20712"><br>
+    <label for="b-items">Consequent B</label>
+    <input type="text" id="b-items" value="21931"><br>
+    <span style="display:inline-block;margin-top:.6rem">Stock codes, comma-separated for multi-item sets.</span>
+    <button type="button" id="count-btn">Count independently</button>
+  </p>
+
+  <div id="out"></div>
+
+  <h2>How to compare with the main application</h2>
+  <ol>
+    <li>Open <code>index.html</code> in a browser.</li>
+    <li>Set <strong>Minimum support = 1.0%</strong> and
+        <strong>Minimum confidence = 30%</strong>, then press
+        <strong>Run rules</strong>.</li>
+    <li>Click the row whose antecedent is <code>20712 — JUMBO BAG WOODLAND
+        ANIMALS</code> and consequent <code>21931 — JUMBO STORAGE BAG
+        SUKI</code>.</li>
+    <li>Compare the detail panel's count(A∪B), count(A), count(B), support,
+        confidence and lift with the numbers this page prints.</li>
+    <li>Press <strong>Run tests</strong> on the main page and confirm
+        <strong>11 passed / 0 failed / 0 pending</strong>.</li>
+  </ol>
+  <div class="note" id="reference-note">
+    <strong>Reference values recorded from the app's own output</strong>
+    (produced by <code>script.js</code> during implementation verification,
+    shown here only as a diff target — confirm them live in the browser):
+    count(A∪B) = 179, count(A) = 491, count(B) = 774,
+    support = 1.0480%, confidence = 36.4562%, lift = 8.0449.
+  </div>
+
+  <script src="transactions.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var HW4 = window.HW4;
+    var out = document.getElementById('out');
+
+    // Independent lookup + scan helpers: plain loops over the exported arrays.
+    var stockToIdx = {};
+    HW4.stocks.forEach(function (s, i) { stockToIdx[s] = i; });
+    var idxToStock = HW4.stocks;
+
+    function parseCodes(text) {
+      return String(text || '')
+        .split(',')
+        .map(function (t) { return t.trim().toUpperCase(); })
+        .filter(function (t) { return t.length > 0; });
+    }
+
+    function resolve(codes) {
+      var idxs = [];
+      var missing = [];
+      codes.forEach(function (c) {
+        if (Object.prototype.hasOwnProperty.call(stockToIdx, c)) idxs.push(stockToIdx[c]);
+        else missing.push(c);
+      });
+      return { idxs: idxs, missing: missing };
+    }
+
+    // One pass: count baskets containing every target index; collect ids.
+    function scan(targetIdxs) {
+      var ids = [];
+      var baskets = HW4.baskets;
+      for (var b = 0; b < baskets.length; b++) {
+        var basket = baskets[b];
+        var all = true;
+        for (var t = 0; t < targetIdxs.length; t++) {
+          var wanted = targetIdxs[t];
+          var found = false;
+          for (var j = 0; j < basket.length; j++) {
+            if (basket[j] === wanted) { found = true; break; }
+          }
+          if (!found) { all = false; break; }
+        }
+        if (all) ids.push(b);
+      }
+      return { count: ids.length, ids: ids };
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function describe(stock) {
+      var i = HW4.stocks.indexOf(stock);
+      return i >= 0 ? HW4.descriptions[i] : '(unknown)';
+    }
+
+    function pct(x) { return (x * 100).toFixed(2) + '%'; }
+    function f4(x) { return x.toFixed(4); }
+
+    function run() {
+      var aCodes = parseCodes(document.getElementById('a-items').value);
+      var bCodes = parseCodes(document.getElementById('b-items').value);
+      var resA = resolve(aCodes);
+      var resB = resolve(bCodes);
+      var missing = resA.missing.concat(resB.missing);
+      if (missing.length) {
+        out.innerHTML = '<p class="bad">Unknown stock code(s): ' + esc(missing.join(', ')) + '</p>';
+        return;
+      }
+      if (!resA.idxs.length || !resB.idxs.length) {
+        out.innerHTML = '<p class="bad">Enter at least one stock code for A and for B.</p>';
+        return;
+      }
+
+      var N = HW4.baskets.length;                 // raw length of the exported baskets array
+      var nA = scan(resA.idxs);
+      var nB = scan(resB.idxs);
+      var nAB = scan(resA.idxs.concat(resB.idxs)); // union of the two sets
+
+      var support = nAB.count / N;
+      var confidence = nAB.count / nA.count;
+      var lift = confidence / (nB.count / N);
+
+      var rows = '';
+      rows += '<tr><td>N (baskets in transactions.js)</td><td class="num">' + N + '</td></tr>';
+      rows += '<tr><td>count(A) — ' + esc(aCodes.join(', ')) + '</td><td class="num">' + nA.count + '</td></tr>';
+      rows += '<tr><td>count(B) — ' + esc(bCodes.join(', ')) + '</td><td class="num">' + nB.count + '</td></tr>';
+      rows += '<tr><td>count(A∪B)</td><td class="num">' + nAB.count + '</td></tr>';
+      rows += '<tr><td>support = nAB / N</td><td class="num">' + support.toFixed(6) + ' (' + pct(support) + ')</td></tr>';
+      rows += '<tr><td>confidence = nAB / nA</td><td class="num">' + confidence.toFixed(6) + ' (' + pct(confidence) + ')</td></tr>';
+      rows += '<tr><td>lift = confidence / (nB / N)</td><td class="num">' + lift.toFixed(6) + ' (' + f4(lift) + ')</td></tr>';
+      rows += '<tr><td>lift &gt; 1 ?</td><td class="num ' + (lift > 1 ? 'ok' : 'bad') + '">' + (lift > 1 ? 'yes' : 'no') + '</td></tr>';
+
+      var descRows = '<table><thead><tr><th>Side</th><th>Stock</th><th>Description</th></tr></thead><tbody>';
+      aCodes.forEach(function (c) { descRows += '<tr><td>A</td><td>' + esc(c) + '</td><td>' + esc(describe(c)) + '</td></tr>'; });
+      bCodes.forEach(function (c) { descRows += '<tr><td>B</td><td>' + esc(c) + '</td><td>' + esc(describe(c)) + '</td></tr>'; });
+      descRows += '</tbody></table>';
+
+      // Sample baskets: show ids + raw exported contents, matched codes highlighted.
+      var sampleIds = nAB.ids.slice(0, 8);
+      var hits = {};
+      resA.idxs.concat(resB.idxs).forEach(function (i) { hits[i] = true; });
+      var sampleHtml = '<p>First ' + sampleIds.length + ' basket indices (0-based position in the ' +
+        '<code>baskets</code> array of <code>transactions.js</code>) containing A∪B ' +
+        '(all ' + nAB.count + ' matching indices: <code>' + nAB.ids.join(', ') + '</code>):</p>';
+      sampleHtml += '<table><thead><tr><th class="num">basket index</th><th class="num">size</th><th>exported stock codes (A/B highlighted)</th></tr></thead><tbody>';
+      sampleIds.forEach(function (bid) {
+        var basket = HW4.baskets[bid];
+        var codes = basket.map(function (i) {
+          return hits[i] ? '<span class="hit">' + esc(idxToStock[i]) + '</span>' : esc(idxToStock[i]);
+        });
+        sampleHtml += '<tr><td class="num">' + bid + '</td><td class="num">' + basket.length +
+          '</td><td class="basket">' + codes.join(', ') + '</td></tr>';
+      });
+      sampleHtml += '</tbody></table>';
+
+      var formula = '<pre>' +
+        'support    = ' + nAB.count + ' / ' + N + ' = ' + support.toFixed(6) + '\n' +
+        'confidence = ' + nAB.count + ' / ' + nA.count + ' = ' + confidence.toFixed(6) + '\n' +
+        'lift       = ' + confidence.toFixed(6) + ' / (' + nB.count + ' / ' + N + ') = ' + lift.toFixed(6) + '\n' +
+        '</pre>';
+
+      out.innerHTML =
+        '<h2>Independent counts (raw scan of transactions.js)</h2>' +
+        descRows +
+        '<table><thead><tr><th>Quantity</th><th class="num">Value</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+        formula +
+        sampleHtml;
+    }
+
+    document.getElementById('count-btn').addEventListener('click', run);
+    run(); // compute on load so the page shows numbers immediately
+  })();
+  </script>
+</body>
+</html>
