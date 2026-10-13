@@ -747,6 +747,24 @@ function recommendTopK(userId, K = 10) {
  * @returns {{overallRecall: number, perUser: Array<{userId: number, relevant: number, hit: number}>, excluded: {unseenIds: number[], usersWithoutRelevant: number[]}}}
  */
 function recallAtK(K = 10) {
+  const iterator = recallAtKSteps(K);
+  let step = iterator.next();
+  while (!step.done) step = iterator.next();
+  return step.value;
+}
+
+/**
+ * Yielding core of `recallAtK`.
+ *
+ * Runs the same per-user evaluation but yields a progress object after each
+ * chunk of users, so the UI can release the main thread between chunks.
+ * `recallAtK` drains it synchronously (fixtures/tests); `renderRecall` drives it
+ * one chunk at a time. The metric, candidate set, and denominator are unchanged.
+ *
+ * @param {number} [K=10]
+ * @returns {Generator<{phase: string, processed: number, total: number}, Object, void>}
+ */
+function* recallAtKSteps(K = 10) {
   const result = {
     overallRecall: 0,
     perUser: [],
@@ -812,7 +830,11 @@ function recallAtK(K = 10) {
   };
 
   const usersWithoutRelevant = [];
-  for (const userId of [...testUsers].sort((a, b) => a - b)) {
+  const users = [...testUsers].sort((a, b) => a - b);
+  const total = users.length;
+  const CHUNK = 25;
+  for (let index = 0; index < total; index++) {
+    const userId = users[index];
     const rated = userRated.get(userId) || new Set();
     const relevant = relevantByUser.get(userId) || new Set();
     const eligible = [];
@@ -821,12 +843,15 @@ function recallAtK(K = 10) {
     }
     if (eligible.length === 0) {
       usersWithoutRelevant.push(userId);
-      continue;
+    } else {
+      const recommended = evaluationTopK(userId);
+      let hit = 0;
+      for (const movieId of eligible) if (recommended.has(movieId)) hit++;
+      result.perUser.push({ userId, relevant: eligible.length, hit });
     }
-    const recommended = evaluationTopK(userId);
-    let hit = 0;
-    for (const movieId of eligible) if (recommended.has(movieId)) hit++;
-    result.perUser.push({ userId, relevant: eligible.length, hit });
+    if ((index + 1) % CHUNK === 0 || index + 1 === total) {
+      yield { phase: "recall", processed: index + 1, total };
+    }
   }
 
   result.overallRecall = result.perUser.length
@@ -961,11 +986,23 @@ function renderTopK(userId, container) {
  * @param {HTMLElement|null} [container]
  * @returns {void}
  */
-function renderRecall(K = 10, container) {
+async function renderRecall(K = 10, container) {
   const target = container || document.getElementById("recall-results");
   if (!target) return;
+  const button = document.getElementById("recall-btn");
+  if (button) button.disabled = true;
   try {
-    const result = recallAtK(K);
+    const iterator = recallAtKSteps(K);
+    let step = iterator.next();
+    while (!step.done) {
+      const progress = step.value;
+      if (progress) {
+        target.innerHTML = `<p class="hint">Evaluating Recall@${K}\u2026 ${progress.processed}/${progress.total} users</p>`;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      step = iterator.next();
+    }
+    const result = step.value;
     const rows = result.perUser
       .map(
         (u) => `
@@ -986,6 +1023,8 @@ function renderRecall(K = 10, container) {
       <p class="hint">Excluded: ${result.excluded.unseenIds.length} unseen relevant test item(s); ${result.excluded.usersWithoutRelevant.length} user(s) without a relevant candidate.</p>`;
   } catch (error) {
     target.innerHTML = `<p class="empty-state">Recall unavailable — implement the <code>TODO(hw5)</code> functions. <code>${escapeHtml(error.message)}</code></p>`;
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
