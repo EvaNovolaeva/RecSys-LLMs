@@ -119,6 +119,14 @@ let trainingHistory = [];
  */
 let bestCheckpoint = null;
 
+/**
+ * Test-split RMSE of the validation-selected checkpoint, or `null` before
+ * training. Computed from the restored checkpoint; never used for selection.
+ *
+ * @type {number|null}
+ */
+let mfTestRMSE = null;
+
 /** Name of the TensorFlow.js backend selected by `initTf` (`"webgl"` / `"cpu"`). */
 let tfBackend = null;
 
@@ -578,6 +586,7 @@ function* trainMFEpochs(train, val, opts, onProgress) {
               .square()
               .sum()
               .add(model.itemFactors.square().sum())
+              .div(n)
               .mul(reg);
             return mse.add(l2);
           }),
@@ -803,18 +812,15 @@ function* recallAtKSteps(K = 10) {
 
   const iRows = model.itemFactors.shape[0];
 
+  const trainCandidateIds = [...trainPool]
+    .filter((movieId) => movieId >= 0 && movieId < iRows)
+    .sort((a, b) => a - b);
+
   const evaluationTopK = (userId) => {
     const rated = userRated.get(userId) || new Set();
-    const candidateIds = [];
-    for (const m of movies) {
-      const movieId = m.id;
-      if (movieId < 0 || movieId >= iRows) continue;
-      if (rated.has(movieId)) continue;
-      candidateIds.push(movieId);
-    }
+    const candidateIds = trainCandidateIds.filter((movieId) => !rated.has(movieId));
     const recommended = new Set();
     if (candidateIds.length === 0) return recommended;
-    candidateIds.sort((a, b) => a - b);
     const idArray = Int32Array.from(candidateIds);
     const indices = tf.tidy(() => {
       const u = tf.gather(
@@ -898,6 +904,7 @@ function renderSplitSummary(container) {
   const total = trainSet.length + valSet.length + testSet.length;
   const pct = (n) => (total ? ((n / total) * 100).toFixed(1) : "0.0");
   const exclusions = typeof SPLIT_EXCLUSIONS === "undefined" ? [] : SPLIT_EXCLUSIONS;
+  const mfText = mfTestRMSE === null ? "not trained yet" : fmt(mfTestRMSE);
   target.innerHTML = `
     <table class="data-table">
       <thead><tr><th scope="col">Split</th><th scope="col">Ratings</th><th scope="col">Share</th></tr></thead>
@@ -907,7 +914,7 @@ function renderSplitSummary(container) {
         <tr><td>Test</td><td class="num">${testSet.length}</td><td class="num">${pct(testSet.length)}%</td></tr>
       </tbody>
     </table>
-    <p class="hint">${exclusions.length} user(s) skipped while splitting; baseline test RMSE ${fmt(computeBaselineRMSE(testSet))}.</p>`;
+    <p class="hint">${exclusions.length} user(s) skipped while splitting; baseline test RMSE ${fmt(computeBaselineRMSE(testSet))}; MF test RMSE ${mfText}.</p>`;
 }
 
 /**
@@ -1083,6 +1090,8 @@ async function runPipeline() {
   }
   const opts = readHyperparameters();
   if (trainButton) trainButton.disabled = true;
+  mfTestRMSE = null;
+  renderSplitSummary();
   try {
     if (status) status.textContent = "Training\u2026";
     initializeFactors(trainSet, NUM_FACTORS);
@@ -1104,10 +1113,12 @@ async function runPipeline() {
 
     trainingHistory = step.value;
     bestCheckpoint = selectBestCheckpoint(trainingHistory);
+    mfTestRMSE = computeRMSEFor(testSet);
     renderTrainingCurve();
+    renderSplitSummary();
     if (status) {
       status.textContent = bestCheckpoint
-        ? `Trained ${opts.epochs} epoch(s) on ${tfBackend || "tf"} — best val RMSE ${fmt(bestCheckpoint.valRMSE)} at epoch ${bestCheckpoint.epoch}.`
+        ? `Trained ${opts.epochs} epoch(s) on ${tfBackend || "tf"} — best val RMSE ${fmt(bestCheckpoint.valRMSE)} at epoch ${bestCheckpoint.epoch}; MF test RMSE ${fmt(mfTestRMSE)} (baseline test RMSE ${fmt(computeBaselineRMSE(testSet))}).`
         : `Trained ${opts.epochs} epoch(s) — no history recorded.`;
     }
   } catch (error) {
