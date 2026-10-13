@@ -491,6 +491,28 @@ function initializeFactors(train, numFactors = NUM_FACTORS) {
  * @returns {HistoryRow[]}
  */
 function trainMF(train, val, opts) {
+  const iterator = trainMFEpochs(train, val, opts, null);
+  let step = iterator.next();
+  while (!step.done) step = iterator.next();
+  return step.value;
+}
+
+/**
+ * Yielding core of `trainMF`.
+ *
+ * The heavy work runs here as a synchronous generator so the caller can choose
+ * how to drive it: `trainMF` drains it synchronously (fixtures/tests), while the
+ * UI pipeline drains it one step at a time and yields to the event loop between
+ * steps so the browser stays responsive. Every `yield` returns a progress object
+ * (`{ phase, epoch, epochs, ... }`); the generator's return value is the history.
+ *
+ * @param {Rating[]} train
+ * @param {Rating[]} val
+ * @param {TrainOptions} opts
+ * @param {((progress: Object) => void)|null} onProgress
+ * @returns {Generator<Object, HistoryRow[], void>}
+ */
+function* trainMFEpochs(train, val, opts, onProgress) {
   trainingHistory = [];
   if (!model || !train || train.length === 0) return trainingHistory;
 
@@ -521,6 +543,7 @@ function trainMF(train, val, opts) {
   const optimizer = tf.train.adam(lr);
   const size = Math.max(1, Math.min(Math.round(Number(batchSize)) || 1, n));
   const numBatches = Math.ceil(n / size);
+  const yieldEvery = Math.max(1, Math.floor(numBatches / 5));
   let best = null;
 
   for (let epoch = 1; epoch <= epochs; epoch++) {
@@ -561,6 +584,11 @@ function trainMF(train, val, opts) {
         false,
         [model.userFactors, model.itemFactors],
       );
+      if ((b + 1) % yieldEvery === 0) {
+        const progress = { phase: "batch", epoch, epochs, batch: b + 1, numBatches };
+        if (onProgress) onProgress(progress);
+        yield progress;
+      }
     }
 
     const trainRMSE = computeRMSEFor(train);
@@ -576,6 +604,17 @@ function trainMF(train, val, opts) {
         itemFactors: model.itemFactors.clone(),
       };
     }
+
+    const epochProgress = {
+      phase: "epoch",
+      epoch,
+      epochs,
+      trainRMSE,
+      valRMSE,
+      history: trainingHistory,
+    };
+    if (onProgress) onProgress(epochProgress);
+    yield epochProgress;
   }
 
   if (best) {
@@ -749,7 +788,8 @@ function recallAtK(K = 10) {
   const evaluationTopK = (userId) => {
     const rated = userRated.get(userId) || new Set();
     const candidateIds = [];
-    for (const movieId of trainPool) {
+    for (const m of movies) {
+      const movieId = m.id;
       if (movieId < 0 || movieId >= iRows) continue;
       if (rated.has(movieId)) continue;
       candidateIds.push(movieId);
@@ -988,19 +1028,42 @@ function populateUserSelect() {
  * Run the full training pipeline: initialize, train, select the best checkpoint,
  * and refresh the training curve.
  *
- * @returns {void}
+ * Drives the `trainMFEpochs` generator one step at a time and awaits a macrotask
+ * between steps, so the main thread is released to repaint and the progress text
+ * / training curve update live. The Train button is disabled for the duration and
+ * always restored in `finally`.
+ *
+ * @returns {Promise<void>}
  */
-function runPipeline() {
+async function runPipeline() {
   const status = document.getElementById("status");
+  const trainButton = document.getElementById("train");
   if (!movies.length || trainSet.length === 0) {
     if (status) status.textContent = "Data not loaded yet — reload the page.";
     return;
   }
   const opts = readHyperparameters();
+  if (trainButton) trainButton.disabled = true;
   try {
     if (status) status.textContent = "Training\u2026";
     initializeFactors(trainSet, NUM_FACTORS);
-    trainingHistory = trainMF(trainSet, valSet, opts);
+
+    const iterator = trainMFEpochs(trainSet, valSet, opts, null);
+    let step = iterator.next();
+    while (!step.done) {
+      const progress = step.value;
+      if (status && progress) {
+        status.textContent =
+          progress.phase === "epoch"
+            ? `Epoch ${progress.epoch}/${progress.epochs} — train RMSE ${fmt(progress.trainRMSE)}, val RMSE ${fmt(progress.valRMSE)}`
+            : `Epoch ${progress.epoch}/${progress.epochs} — batch ${progress.batch}/${progress.numBatches}`;
+      }
+      renderTrainingCurve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      step = iterator.next();
+    }
+
+    trainingHistory = step.value;
     bestCheckpoint = selectBestCheckpoint(trainingHistory);
     renderTrainingCurve();
     if (status) {
@@ -1010,11 +1073,13 @@ function runPipeline() {
     }
   } catch (error) {
     const message = String(error && error.message ? error.message : error);
-    if (status) status.textContent = message;
+    if (status) status.textContent = `Training failed: ${message}`;
     const target = document.getElementById("training-curve");
     if (target) {
-      target.innerHTML = `<p class="empty-state">Training failed — implement the <code>TODO(hw5)</code> functions, then press &ldquo;Train&rdquo;. <code>${escapeHtml(message)}</code></p>`;
+      target.innerHTML = `<p class="empty-state">Training failed. <code>${escapeHtml(message)}</code></p>`;
     }
+  } finally {
+    if (trainButton) trainButton.disabled = false;
   }
 }
 
